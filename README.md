@@ -8,6 +8,12 @@
   </a>
 </p>
 <p align="center">The open source AI coding agent.</p>
+
+> [!NOTE]
+> **This is a fork.** The `main` branch of this fork cherry-picks PRs pending
+> upstream review. See the [Cherry-picked PRs](#cherry-picked-prs) section below.
+> For the official release, visit [anomalyco/opencode](https://github.com/anomalyco/opencode).
+
 <p align="center">
   <a href="https://opencode.ai/discord"><img alt="Discord" src="https://img.shields.io/discord/1391832426048651334?style=flat-square&label=discord" /></a>
   <a href="https://www.npmjs.com/package/opencode-ai"><img alt="npm" src="https://img.shields.io/npm/v/opencode-ai?style=flat-square" /></a>
@@ -109,6 +115,31 @@ It's very similar to Claude Code in terms of capability. Here are the key differ
 - Out of the box LSP support
 - A focus on TUI. OpenCode is built by neovim users and the creators of [terminal.shop](https://terminal.shop); we are going to push the limits of what's possible in the terminal.
 - A client/server architecture. This for example can allow OpenCode to run on your computer, while you can drive it remotely from a mobile app. Meaning that the TUI frontend is just one of the possible clients.
+
+---
+
+### Cherry-picked PRs
+
+This fork's `main` branch includes the following PRs that are pending upstream review:
+
+| PR                                                       | Description                                        |
+| -------------------------------------------------------- | -------------------------------------------------- |
+| [#8953](https://github.com/anomalyco/opencode/pull/8953) | Stream large bash output to tmpfile with filtering |
+
+Pre-built binaries are available as OCI artifacts from `ghcr.io/cgwalters/opencode`.
+
+#### Installing from this fork
+
+```bash
+# Install oras (https://oras.land)
+curl -LO https://github.com/oras-project/oras/releases/download/v1.2.0/oras_1.2.0_linux_amd64.tar.gz
+tar -xzf oras_1.2.0_linux_amd64.tar.gz && mv oras ~/.local/bin/
+
+# Pull the binary for your platform (linux-x64, linux-arm64, darwin-arm64, darwin-x64)
+oras pull ghcr.io/cgwalters/opencode:linux-x64
+chmod +x opencode
+sudo mv opencode /usr/local/bin/  # or ~/.local/bin/
+```
 
 ---
 
