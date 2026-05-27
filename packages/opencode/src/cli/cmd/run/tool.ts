@@ -33,6 +33,7 @@ import type { TodoWriteTool } from "@/tool/todo"
 import type { WebFetchTool } from "@/tool/webfetch"
 import { webSearchProviderLabel, type WebSearchTool } from "@/tool/websearch"
 import type { WriteTool } from "@/tool/write"
+import type { TrimToolResultTool } from "@/tool/trim_tool_result"
 import { LANGUAGE_EXTENSIONS } from "@/lsp/language"
 import * as Locale from "@/util/locale"
 import type { RunEntryBody, StreamCommit, ToolSnapshot } from "./types"
@@ -110,6 +111,7 @@ type ToolDefs = {
   websearch: typeof WebSearchTool
   skill: typeof SkillTool
   plan_exit: typeof PlanExitTool
+  trim_tool_result: typeof TrimToolResultTool
 }
 
 type ToolName = keyof ToolDefs
@@ -468,6 +470,21 @@ function runLsp(p: ToolProps<typeof LspTool>): ToolInline {
     icon: "→",
     title: text(p.frame.state.title) || lspTitle(p.input),
   }
+}
+
+function runTrim(_p: ToolProps<typeof TrimToolResultTool>): ToolInline {
+  return {
+    icon: "~",
+    title: "Trim Tool Result",
+  }
+}
+
+function snapTrim(_p: ToolProps<typeof TrimToolResultTool>): ToolSnapshot | undefined {
+  return undefined
+}
+
+function scrollTrimStart(_p: ToolProps<typeof TrimToolResultTool>): string {
+  return "~ Trim Tool Result"
 }
 
 function runPlanExit(p: ToolProps<typeof PlanExitTool>): ToolInline {
@@ -1230,6 +1247,17 @@ const TOOL_RULES = {
     run: runPlanExit,
     scroll: {
       start: () => "",
+    },
+  },
+  trim_tool_result: {
+    view: {
+      output: false,
+      final: false,
+    },
+    run: runTrim,
+    snap: snapTrim,
+    scroll: {
+      start: scrollTrimStart,
     },
   },
 } as const satisfies ToolRegistry

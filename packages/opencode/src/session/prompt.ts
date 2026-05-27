@@ -1264,12 +1264,17 @@ export const layer = Layer.effect(
           const hasToolCalls =
             lastAssistantMsg?.parts.some((part) => part.type === "tool" && !part.metadata?.providerExecuted) ?? false
 
-          if (
-            lastAssistant?.finish &&
-            !["tool-calls"].includes(lastAssistant.finish) &&
-            !hasToolCalls &&
-            lastUser.id < lastAssistant.id
-          ) {
+          // Break whenever the model has produced a response with no pending tool calls.
+          // Checking hasToolCalls alone (instead of relying on the finish reason) correctly
+          // handles two complementary provider quirks:
+          //   • finish="stop" but the message HAS tool calls → hasToolCalls=true → continue
+          //   • finish="tool-calls" but the message has NO tool calls → hasToolCalls=false → break
+          // The second case is what trim_tool_result triggers: after trim completes the model
+          // often replies with a plain text turn whose finish reason is still "tool-calls"
+          // (because tools were available). Without this guard, the loop would continue and
+          // pass messages ending with an assistant turn to the LLM, causing providers that
+          // require conversations to end with a user message to reject the request.
+          if (lastAssistant?.finish && !hasToolCalls && lastUser.id < lastAssistant.id) {
             yield* slog.info("exiting loop")
             break
           }

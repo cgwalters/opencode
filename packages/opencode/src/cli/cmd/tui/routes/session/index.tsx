@@ -15,6 +15,7 @@ import {
 } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import path from "path"
+import { formatBytes } from "@/util/format"
 import { useRoute, useRouteData } from "@tui/context/route"
 import { useProject } from "@tui/context/project"
 import { useSync } from "@tui/context/sync"
@@ -45,6 +46,7 @@ import { TodoWriteTool } from "@/tool/todo"
 import type { GrepTool } from "@/tool/grep"
 import type { EditTool } from "@/tool/edit"
 import type { ApplyPatchTool } from "@/tool/apply_patch"
+import type { TrimToolResultTool } from "@/tool/trim_tool_result"
 import type { WebFetchTool } from "@/tool/webfetch"
 import { webSearchProviderLabel, type WebSearchTool } from "@/tool/websearch"
 import type { TaskTool } from "@/tool/task"
@@ -1664,6 +1666,9 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
         <Match when={props.part.tool === "apply_patch"}>
           <ApplyPatch {...toolprops} />
         </Match>
+        <Match when={props.part.tool === "trim_tool_result"}>
+          <TrimToolResult {...toolprops} />
+        </Match>
         <Match when={props.part.tool === "todowrite"}>
           <TodoWrite {...toolprops} />
         </Match>
@@ -1736,6 +1741,7 @@ function InlineTool(props: {
   children: JSX.Element
   part: ToolPart
   onClick?: () => void
+  attached?: boolean
 }) {
   const [margin, setMargin] = createSignal(0)
   const { theme } = useTheme()
@@ -1777,7 +1783,7 @@ function InlineTool(props: {
         if (renderer.getSelection()?.getSelectedText()) return
         props.onClick?.()
       }}
-      renderBefore={function () {
+      renderBefore={props.attached ? undefined : function () {
         const el = this as BoxRenderable
         const parent = el.parent
         if (!parent) {
@@ -2257,6 +2263,30 @@ function TodoWrite(props: ToolProps<typeof TodoWriteTool>) {
         </InlineTool>
       </Match>
     </Switch>
+  )
+}
+
+function TrimToolResult(props: ToolProps<typeof TrimToolResultTool>) {
+  const label = createMemo(() => {
+    if (props.part.state.status !== "completed") return "Trimming..."
+    const meta = props.part.state.metadata
+    const count = meta?.trimCount ?? 0
+    if (count === 0) return "Agent invoked trim_tool_result: (no tool result to trim)"
+    const old = Number(meta?.oldLength ?? 0)
+    const next = Number(meta?.newLength ?? 0)
+    return `Agent invoked trim_tool_result: ${formatBytes(old)} -> ${formatBytes(next)} (${count} result${count === 1 ? "" : "s"})`
+  })
+
+  return (
+    <InlineTool
+      icon="~"
+      pending="Trimming..."
+      complete={props.part.state.status === "completed"}
+      part={props.part}
+      attached
+    >
+      {label()}
+    </InlineTool>
   )
 }
 

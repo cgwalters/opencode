@@ -8,6 +8,7 @@ import path from "path"
 import os from "os"
 import { Filesystem } from "@/util/filesystem"
 import { Process } from "@/util/process"
+import { formatBytes } from "@/util/format"
 
 interface UninstallArgs {
   keepConfig: boolean
@@ -112,7 +113,7 @@ async function showRemovalSummary(targets: RemovalTargets, method: Installation.
     if (!exists) continue
 
     const size = await getDirectorySize(dir.path)
-    const sizeStr = formatSize(size)
+    const sizeStr = formatBytes(size)
     const status = dir.keep ? UI.Style.TEXT_DIM + "(keeping)" : ""
     const prefix = dir.keep ? "○" : "✓"
 
@@ -337,12 +338,6 @@ async function getDirectorySize(dir: string): Promise<number> {
   return total
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
-}
 
 function shortenPath(p: string): string {
   const home = os.homedir()

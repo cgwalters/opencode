@@ -9,6 +9,7 @@ import { ReadTool } from "./read"
 import { TaskTool } from "./task"
 import { TaskStatusTool } from "./task_status"
 import { TodoWriteTool } from "./todo"
+import { TrimToolResultTool } from "./trim_tool_result"
 import { WebFetchTool } from "./webfetch"
 import { WriteTool } from "./write"
 import { InvalidTool } from "./invalid"
@@ -132,6 +133,7 @@ export const layer: Layer.Layer<
     const shell = yield* ShellTool
     const globtool = yield* GlobTool
     const writetool = yield* WriteTool
+    const trimtool = yield* TrimToolResultTool
     const edit = yield* EditTool
     const greptool = yield* GrepTool
     const patchtool = yield* ApplyPatchTool
@@ -234,6 +236,7 @@ export const layer: Layer.Layer<
           grep: Tool.init(greptool),
           edit: Tool.init(edit),
           write: Tool.init(writetool),
+          trim_tool_result: Tool.init(trimtool),
           task: Tool.init(task),
           task_status: Tool.init(taskStatus),
           fetch: Tool.init(webfetch),
@@ -259,6 +262,7 @@ export const layer: Layer.Layer<
             tool.grep,
             tool.edit,
             tool.write,
+            tool.trim_tool_result,
             tool.task,
             ...(flags.experimentalBackgroundSubagents ? [tool.task_status] : []),
             tool.fetch,

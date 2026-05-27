@@ -619,6 +619,47 @@ it.instance("loop continues when finish is tool-calls", () =>
   }),
 )
 
+it.instance(
+  "loop exits when finish is tool-calls but no actual tool calls (trim_tool_result scenario)",
+  () =>
+    Effect.gen(function* () {
+      const { llm } = yield* useServerConfig(providerCfg)
+      const prompt = yield* SessionPrompt.Service
+      const sessions = yield* Session.Service
+      const session = yield* sessions.create({
+        title: "Trim scenario",
+        permission: [{ permission: "*", pattern: "*", action: "allow" }],
+      })
+      yield* prompt.prompt({
+        sessionID: session.id,
+        agent: "build",
+        noReply: true,
+        parts: [{ type: "text", text: "run bash then trim" }],
+      })
+      // Step 1: model calls bash tool
+      yield* llm.tool("bash", { command: "ls" })
+      // Step 2: model calls trim_tool_result (finish="tool_calls")
+      yield* llm.tool("trim_tool_result", { summary: "trimmed" })
+      // Step 3: model responds with text ONLY but provider returns finish="tool_calls"
+      // (some providers do this when tools are available but unused).
+      // The loop must exit here instead of continuing and sending messages ending
+      // with an assistant turn to the LLM.
+      yield* llm.push(reply().text("I trimmed the output.").toolCalls())
+
+      const result = yield* prompt.loop({ sessionID: session.id })
+      // Loop should have stopped at step 3 (text-only response with wrong finish)
+      // rather than making a 4th call. Without the fix the loop would continue
+      // and the next toModelMessages call would produce messages ending with an
+      // assistant message, causing providers to reject with
+      // "conversation must end with a user message".
+      expect(yield* llm.calls).toBe(3)
+      expect(result.info.role).toBe("assistant")
+      if (result.info.role === "assistant") {
+        expect(result.parts.some((part) => part.type === "text" && part.text === "I trimmed the output.")).toBe(true)
+      }
+    }),
+)
+
 it.instance("glob tool keeps instance context during prompt runs", () =>
   Effect.gen(function* () {
     const { dir, llm } = yield* useServerConfig(providerCfg)
