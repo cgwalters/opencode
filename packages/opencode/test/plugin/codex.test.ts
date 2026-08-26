@@ -253,6 +253,97 @@ describe("plugin.codex", () => {
     ])
   })
 
+  test("routes only broker Responses paths through the sidecar", async () => {
+    let websocketConnections = 0
+    const requests: Array<{
+      origin: string
+      path: string
+      authorization: string | null
+      accountId: string | null
+      residency: string | null
+    }> = []
+    using server = Bun.serve({
+      port: 0,
+      fetch(request, server) {
+        if (server.upgrade(request)) return
+        const url = new URL(request.url)
+        requests.push({
+          origin: url.origin,
+          path: url.pathname,
+          authorization: request.headers.get("authorization"),
+          accountId: request.headers.get("ChatGPT-Account-Id"),
+          residency: request.headers.get("x-openai-internal-codex-residency"),
+        })
+        return new Response("{}")
+      },
+      websocket: {
+        open(socket) {
+          websocketConnections += 1
+          socket.close()
+        },
+        message() {},
+      },
+    })
+    const originalBroker = process.env.OPENCODE_CHATGPT_OAUTH_BROKER
+
+    try {
+      for (const testCase of [
+        { broker: true, auth: "oauth", path: "/responses", expectedPath: "/backend-api/codex/responses" },
+        { broker: true, auth: "oauth", path: "/v1/responses", expectedPath: "/backend-api/codex/responses" },
+        { broker: true, auth: "oauth", path: "/v1/responses/extra", expectedPath: "/v1/responses/extra" },
+        { broker: true, auth: "oauth", path: "/foo/responses", expectedPath: "/foo/responses" },
+        { broker: false, auth: "api", path: "/other", expectedPath: "/other" },
+      ]) {
+        if (testCase.broker) process.env.OPENCODE_CHATGPT_OAUTH_BROKER = "1"
+        else delete process.env.OPENCODE_CHATGPT_OAUTH_BROKER
+
+        const hooks = await CodexAuthPlugin({} as never, {
+          codexApiEndpoint: "https://codex.example/backend-api/codex/responses",
+          experimentalWebSockets: true,
+        })
+        const loaded = await hooks.auth!.loader!(
+          async () =>
+            testCase.auth === "api"
+              ? ({ type: "api", key: "api-key" } as never)
+              : ({
+                  type: "oauth",
+                  refresh: "refresh",
+                  access: createTestJwt({
+                    chatgpt_account_id: "account-from-token",
+                    "https://api.openai.com/auth": { chatgpt_compute_residency: "eu" },
+                  }),
+                  expires: Date.now() + 60_000,
+                } as never),
+          {} as never,
+        )
+
+        await loaded.fetch!(new URL(testCase.path, server.url), {
+          method: "POST",
+          headers: {
+            authorization: "Bearer caller-token",
+            "ChatGPT-Account-Id": "caller-account",
+            "x-openai-internal-codex-residency": "caller-residency",
+            "session-id": "session-1",
+          },
+          body: JSON.stringify({ stream: true }),
+        })
+        await hooks.dispose?.()
+
+        expect(websocketConnections).toBe(0)
+        expect(requests.at(-1)).toEqual({
+          origin: server.url.origin,
+          path: testCase.expectedPath,
+          authorization: testCase.broker ? null : "Bearer caller-token",
+          accountId: testCase.broker ? null : "caller-account",
+          residency: testCase.broker ? null : "caller-residency",
+        })
+      }
+    } finally {
+      if (originalBroker === undefined) delete process.env.OPENCODE_CHATGPT_OAUTH_BROKER
+      else process.env.OPENCODE_CHATGPT_OAUTH_BROKER = originalBroker
+    }
+  })
+
   test("sends token residency through the WebSocket transport", async () => {
     await using server = await createCodexWebSocketServer()
     const hooks = await CodexAuthPlugin({} as never, {

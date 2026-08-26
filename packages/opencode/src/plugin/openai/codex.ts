@@ -333,7 +333,7 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
         // The sidecar injects credentials after this client reaches its fixed
         // local endpoint, while this synthetic identity selects Codex protocol.
         const auth = oauthBroker ? { type: "oauth" as const } : await getAuth()
-        const websocketFetch = options.experimentalWebSockets
+        const websocketFetch = !oauthBroker && options.experimentalWebSockets
           ? OpenAIWebSocketPool.createWebSocketFetch({ httpFetch: fetch })
           : undefined
         if (websocketFetch) {
@@ -352,18 +352,6 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
         return {
           apiKey: OAUTH_DUMMY_KEY,
           async fetch(requestInput: RequestInfo | URL, init?: RequestInit) {
-            if (init?.headers) {
-              if (init.headers instanceof Headers) {
-                init.headers.delete("authorization")
-                init.headers.delete("Authorization")
-              } else if (Array.isArray(init.headers)) {
-                init.headers = init.headers.filter(([key]) => key.toLowerCase() !== "authorization")
-              } else {
-                delete init.headers["authorization"]
-                delete init.headers["Authorization"]
-              }
-            }
-
             const currentAuth = oauthBroker
               ? { type: "oauth" as const, access: "", refresh: "", expires: Number.MAX_SAFE_INTEGER }
               : await getAuth()
@@ -420,12 +408,19 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
             if (!oauthBroker && authWithAccount.accountId) {
               headers.set("ChatGPT-Account-Id", authWithAccount.accountId)
             }
+            if (oauthBroker) {
+              headers.delete("authorization")
+              headers.delete("ChatGPT-Account-Id")
+              headers.delete("x-openai-internal-codex-residency")
+            }
 
             const parsed =
               requestInput instanceof URL
                 ? requestInput
                 : new URL(typeof requestInput === "string" ? requestInput : requestInput.url)
-            const rewrite = parsed.pathname.includes("/v1/responses") || parsed.pathname.includes("/chat/completions")
+            const rewrite = oauthBroker
+              ? parsed.pathname === "/responses" || parsed.pathname === "/v1/responses"
+              : parsed.pathname.includes("/v1/responses") || parsed.pathname.includes("/chat/completions")
             // Keep the configured OPENAI_BASE_URL origin in broker mode. The
             // sidecar strictly maps this path to the fixed ChatGPT endpoint.
             const url = rewrite
@@ -443,7 +438,9 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
               body: init?.body,
               headers,
             }
-            if (websocketFetch && parsed.pathname.endsWith("/responses")) return websocketFetch(url, requestInit)
+            if (!oauthBroker && websocketFetch && parsed.pathname.endsWith("/responses")) {
+              return websocketFetch(url, requestInit)
+            }
             return fetch(url, OpenAIWebSocketPool.withoutInternalHeaders(requestInit))
           },
         }
