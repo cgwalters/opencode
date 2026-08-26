@@ -329,7 +329,10 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
     auth: {
       provider: "openai",
       async loader(getAuth) {
-        const auth = await getAuth()
+        // Broker mode deliberately does not consult the persisted auth store.
+        // The sidecar injects credentials after this client reaches its fixed
+        // local endpoint, while this synthetic identity selects Codex protocol.
+        const auth = oauthBroker ? { type: "oauth" as const } : await getAuth()
         const websocketFetch = options.experimentalWebSockets
           ? OpenAIWebSocketPool.createWebSocketFetch({ httpFetch: fetch })
           : undefined
@@ -361,7 +364,9 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
               }
             }
 
-            const currentAuth = await getAuth()
+            const currentAuth = oauthBroker
+              ? { type: "oauth" as const, access: "", refresh: "", expires: Number.MAX_SAFE_INTEGER }
+              : await getAuth()
             if (currentAuth.type !== "oauth")
               return websocketFetch ? websocketFetch(requestInput, init) : fetch(requestInput, init)
 
