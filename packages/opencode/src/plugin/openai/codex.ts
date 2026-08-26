@@ -10,6 +10,9 @@ import { OauthCallbackPage } from "@opencode-ai/core/oauth/page"
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 const ISSUER = "https://auth.openai.com"
 const CODEX_API_ENDPOINT = "https://chatgpt.com/backend-api/codex/responses"
+// The API proxy owns OAuth credentials in broker mode. The agent receives only
+// a synthetic OAuth record so this plugin selects the ChatGPT Codex protocol.
+const OAUTH_BROKER_ENV = "OPENCODE_CHATGPT_OAUTH_BROKER"
 const OAUTH_PORT = 1455
 const OAUTH_POLLING_SAFETY_MARGIN_MS = 3000
 const ALLOWED_MODELS = new Set(["gpt-5.5", "gpt-5.3-codex-spark", "gpt-5.4", "gpt-5.4-mini"])
@@ -273,6 +276,7 @@ function waitForOAuthCallback(pkce: PkceCodes, state: string): Promise<TokenResp
 export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPluginOptions = {}): Promise<Hooks> {
   const issuer = options.issuer ?? ISSUER
   const codexApiEndpoint = options.codexApiEndpoint ?? CODEX_API_ENDPOINT
+  const oauthBroker = process.env[OAUTH_BROKER_ENV] === "1"
   let websocketFetchInstalled = false
   const websocketFetches: Array<ReturnType<typeof OpenAIWebSocketPool.createWebSocketFetch>> = []
 
@@ -363,7 +367,7 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
 
             const authWithAccount = currentAuth as typeof currentAuth & { accountId?: string }
 
-            if (!currentAuth.access || currentAuth.expires < Date.now()) {
+            if (!oauthBroker && (!currentAuth.access || currentAuth.expires < Date.now())) {
               if (!refreshPromise) {
                 refreshPromise = refreshAccessToken(currentAuth.refresh, issuer)
                   .then(async (tokens) => {
@@ -407,8 +411,8 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
                 }
               }
             }
-            headers.set("authorization", `Bearer ${currentAuth.access}`)
-            if (authWithAccount.accountId) {
+            if (!oauthBroker) headers.set("authorization", `Bearer ${currentAuth.access}`)
+            if (!oauthBroker && authWithAccount.accountId) {
               headers.set("ChatGPT-Account-Id", authWithAccount.accountId)
             }
 
@@ -417,10 +421,16 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
                 ? requestInput
                 : new URL(typeof requestInput === "string" ? requestInput : requestInput.url)
             const rewrite = parsed.pathname.includes("/v1/responses") || parsed.pathname.includes("/chat/completions")
-            const url = rewrite ? new URL(codexApiEndpoint) : parsed
+            // Keep the configured OPENAI_BASE_URL origin in broker mode. The
+            // sidecar strictly maps this path to the fixed ChatGPT endpoint.
+            const url = rewrite
+              ? oauthBroker
+                ? new URL(new URL(codexApiEndpoint).pathname, parsed.origin)
+                : new URL(codexApiEndpoint)
+              : parsed
             if (rewrite) {
               const residency = extractResidency(currentAuth.access)
-              if (residency) headers.set("x-openai-internal-codex-residency", residency)
+              if (!oauthBroker && residency) headers.set("x-openai-internal-codex-residency", residency)
             }
 
             const requestInit = {
